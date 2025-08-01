@@ -17,6 +17,19 @@ balance_history_file = st.file_uploader("Upload Balance History CSV (optional)",
 ledger_file = st.file_uploader("Upload Existing Ledger CSV", type=["csv"])
 
 if st.button("Run Reconciliation"):
+    required_files = {
+        "Attendee Registration": reg_attendee_file,
+        "Exhibitor Registration": reg_exhibitor_file,
+        "Unified Payments": unified_csv_file,
+        "Payouts": payouts_csv_file,
+        "Ledger": ledger_file
+    }
+
+    for name, file in required_files.items():
+        if file is None:
+            st.error(f"{name} file is required. Please upload it before proceeding.")
+            st.stop()
+
     try:
         # Load registrants
         reg_attendee = pd.read_excel(reg_attendee_file)
@@ -225,4 +238,3 @@ if st.button("Run Reconciliation"):
 
     except Exception as e:
         st.error(f"Error: {e}")
-
