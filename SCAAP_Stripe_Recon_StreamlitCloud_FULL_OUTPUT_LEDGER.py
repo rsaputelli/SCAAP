@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -32,7 +31,6 @@ if st.button("Run Reconciliation"):
             st.stop()
 
     try:
-        # Load registrants
         reg_attendee = pd.read_excel(reg_attendee_file)
         reg_exhibitor = pd.read_excel(reg_exhibitor_file)
         reg_attendee["Category"] = "Attendee"
@@ -43,13 +41,11 @@ if st.button("Run Reconciliation"):
         ], ignore_index=True)
         registrants["Conf #"] = registrants["Conf #"].astype(str)
 
-        # Load unified payments
         charges = pd.read_csv(unified_csv_file)
         charges.columns = charges.columns.str.strip().str.lower().str.replace(" ", "_")
         charges["attendeeid"] = charges["attendeeid_(metadata)"].astype(str)
         merged = charges.merge(registrants, left_on="attendeeid", right_on="Conf #", how="left")
 
-        # Classify accounts
         def classify(row):
             if row["Category"] == "Attendee":
                 return "4305 - Annual Meeting Reg"
@@ -66,19 +62,10 @@ if st.button("Run Reconciliation"):
         captured = merged[merged["captured"] == True]
         grouped = captured.groupby("transfer").agg({"amount": "sum", "Revenue Account": lambda x: ', '.join(x.unique())}).reset_index()
 
-        # Load payouts
-        
         payouts_data = payouts_csv_file.getvalue()
         payouts = pd.read_csv(io.BytesIO(payouts_data))
-
-        payouts.columns = payouts.columns.str.strip().str.lower().str.replace(" ", "_")
-        
-        payouts_data = payouts_csv_file.getvalue()
-        payouts = pd.read_csv(io.BytesIO(payouts_data))
-
         payouts.columns = payouts.columns.str.strip().str.lower().str.replace(" ", "_")
 
-        # Build fee lookup from balance history
         fee_lookup = {}
         if balance_history_file:
             bh_df = pd.read_csv(balance_history_file)
@@ -121,7 +108,6 @@ if st.button("Run Reconciliation"):
 
         journal_df = pd.DataFrame(journal)
 
-        # Inject refunds if applicable
         if balance_history_file:
             refund_rows = bh_df[bh_df["Type"].str.lower() == "refund"].copy()
             payout_date_map = payouts.set_index("id")["arrival_date_(utc)"].to_dict()
@@ -138,10 +124,8 @@ if st.button("Run Reconciliation"):
                         "Description": f"Stripe Payout {r.get('Transfer')}"
                     }])], ignore_index=True)
 
-        
         journal_df.sort_values(by=["Date", "Description", "Credit", "Debit"], inplace=True)
 
-        # Load ledger and filter out previously processed transfers
         if ledger_file:
             ledger_df = pd.read_csv(ledger_file)
             processed_ids = ledger_df["transfer"].astype(str).tolist()
@@ -149,12 +133,7 @@ if st.button("Run Reconciliation"):
         else:
             ledger_df = pd.DataFrame(columns=["transfer"])
 
-        st.dataframe(journal_df)
-
-        
-        # Prepare additional sheets
         unmatched = merged[(merged["captured"] == True) & (merged["transfer"].isnull())]
-
         captured["transfer"] = captured["transfer"].astype(str)
         payouts["id"] = payouts["id"].astype(str)
         captured_merged = captured.merge(payouts[["id", "amount", "arrival_date_(utc)"]],
@@ -162,10 +141,6 @@ if st.button("Run Reconciliation"):
         captured_valid = captured_merged[captured_merged["arrival_date_(utc)"].notna()].copy()
         captured_deferred = captured_merged[captured_merged["arrival_date_(utc)"].isna()].copy()
 
-        
-        # --- FIXED Reconciliation Summary ---
-        captured_valid["transfer"] = captured_valid["transfer"].astype(str)
-        merged["transfer"] = merged["transfer"].astype(str)
         recon_merge = captured_valid.merge(
             merged[["transfer", "amount", "Revenue Account"]],
             on="transfer", how="left"
@@ -183,23 +158,18 @@ if st.button("Run Reconciliation"):
         grouped_recon = grouped_recon.rename(columns={"transfer": "Stripe Payout ID"})
         grouped_recon = grouped_recon[["Stripe Payout ID", "Gross Amount", "Net Deposit", "Stripe Fees"]]
 
-        # Generate downloadable Excel
-
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            
             journal_df.to_excel(writer, sheet_name="Journal Entries", index=False)
             unmatched.to_excel(writer, sheet_name="Unmatched Stripe Txns", index=False)
             captured_deferred.to_excel(writer, sheet_name="Deferred Entries", index=False)
             grouped_recon.to_excel(writer, sheet_name="Reconciliation Summary", index=False)
 
-            # Refunds Schedule if available
             if balance_history_file:
                 refunds_df = bh_df[bh_df["Type"].str.lower() == "refund"].copy()
                 refunds_df["Suggested Account"] = "XXXX - See Refunds Schedule"
                 refunds_df["Stripe Payout ID"] = refunds_df["Transfer"]
                 refunds_df["Description"] = "Refund for Stripe Charge " + refunds_df["Source"]
-
                 refunds_df.rename(columns={
                     "Created (UTC)": "Date",
                     "Amount": "Gross Amount",
@@ -208,25 +178,51 @@ if st.button("Run Reconciliation"):
                     "attendeeid (metadata)": "Attendee ID",
                     "company (metadata)": "Company"
                 }, inplace=True)
-
                 refunds_schedule = refunds_df[[
-                    "Date",
-                    "Stripe Payout ID",
-                    "Description",
-                    "Gross Amount",
-                    "Fee Amount",
-                    "Net Amount",
-                    "Attendee ID",
-                    "Company",
-                    "Suggested Account"
+                    "Date", "Stripe Payout ID", "Description", "Gross Amount", "Fee Amount",
+                    "Net Amount", "Attendee ID", "Company", "Suggested Account"
                 ]]
                 refunds_schedule.to_excel(writer, sheet_name="Refunds Schedule", index=False)
 
             workbook = writer.book
-            sheet = writer.sheets["Journal Entries"]
-            yellow_bg = workbook.add_format({'bg_color': '#FFFF99'})
+            currency_fmt = workbook.add_format({"num_format": "$#,##0.00"})
+            bold_fmt = workbook.add_format({"bold": True})
 
             from xlsxwriter.utility import xl_col_to_name
+
+            def format_sheet(sheet_name, df, money_cols, add_validation=False):
+                sheet = writer.sheets[sheet_name]
+                for col in money_cols:
+                    if col in df.columns:
+                        idx = df.columns.get_loc(col)
+                        col_letter = xl_col_to_name(idx)
+                        sheet.set_column(idx, idx, 18, currency_fmt)
+                        sheet.write(f"{col_letter}{len(df)+2}", f"=SUM({col_letter}2:{col_letter}{len(df)+1})", currency_fmt)
+                sheet.write(f"A{len(df)+2}", "TOTALS", bold_fmt)
+
+                if add_validation and "Gross Amount" in df.columns:
+                    try:
+                        b = xl_col_to_name(df.columns.get_loc("Gross Amount"))
+                        c = xl_col_to_name(df.columns.get_loc("Net Deposit"))
+                        d = xl_col_to_name(df.columns.get_loc("Stripe Fees"))
+                        sheet.write(f"A{len(df)+4}", "Validation (Net + Fees)", bold_fmt)
+                        sheet.write_formula(f"B{len(df)+4}", f"={c}{len(df)+2}+{d}{len(df)+2}", currency_fmt)
+                        sheet.write(f"A{len(df)+5}", "Total Refunds (Journal DR to XXXX)", bold_fmt)
+                        sheet.write_formula(
+                            f"B{len(df)+5}",
+                            f'=SUMPRODUCT((ISNUMBER(SEARCH("XXXX", \'Journal Entries\'!B2:B1000))) * (\'Journal Entries\'!C2:C1000))',
+                            currency_fmt
+                        )
+                        sheet.write(f"A{len(df)+6}", "Final Validation (Net + Fees + Refunds)", bold_fmt)
+                        sheet.write_formula(f"B{len(df)+6}", f"=B{len(df)+4}+B{len(df)+5}", currency_fmt)
+                    except Exception as e:
+                        sheet.write(f"A{len(df)+4}", f"Validation error: {e}", bold_fmt)
+
+            format_sheet("Journal Entries", journal_df, ["Debit", "Credit"])
+            format_sheet("Reconciliation Summary", grouped_recon, ["Gross Amount", "Net Deposit", "Stripe Fees"], add_validation=True)
+
+            # Highlight "XXXX" rows
+            sheet = writer.sheets["Journal Entries"]
             account_col_idx = journal_df.columns.get_loc("Account")
             account_col_letter = xl_col_to_name(account_col_idx)
             sheet.conditional_format(
@@ -234,19 +230,17 @@ if st.button("Run Reconciliation"):
                 {
                     "type": "formula",
                     "criteria": f'=ISNUMBER(SEARCH("XXXX", ${account_col_letter}2))',
-                    "format": yellow_bg
+                    "format": workbook.add_format({'bg_color': '#FFFF99'})
                 }
             )
 
-        
         st.download_button("Download Reconciliation Report", data=buffer.getvalue(), file_name="Stripe_Reconciliation_Output.xlsx")
 
-        # Prepare updated ledger
         updated_ledger = pd.concat([ledger_df, captured_valid[["transfer"]]]).drop_duplicates()
         ledger_buffer = BytesIO()
         updated_ledger.to_csv(ledger_buffer, index=False)
         st.download_button("Download Updated Ledger", data=ledger_buffer.getvalue(), file_name="processed_transfers_ledger.csv")
 
-
     except Exception as e:
         st.error(f"Error: {e}")
+
