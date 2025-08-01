@@ -4,9 +4,23 @@ from io import BytesIO
 from datetime import datetime
 import xlsxwriter
 import io
+import zipfile
 
 st.set_page_config(page_title="Stripe-TD Reconciliation", layout="wide")
 st.title("Stripe Reconciliation to TD Bank (Streamlit Cloud Version)")
+
+st.markdown("""
+#### Instructions:
+- **Attendee & Exhibitor Files (from Stova):** Open the event in Stova, go to **Registrations → Registrant List → Export Data**, then save the file. Ensure you **enable editing** and save each as `.xlsx` in the appropriate monthly folder.
+- **Stripe Files:**
+  - In Stripe, click **Transactions**
+  - Export data from:
+    - **Payments** → Unified Payments file
+    - **Payouts** → Payouts file
+    - **All Activity** → Balance History file
+  - Use **Custom Date Range**: ~4 days before the 1st of the month through the last day of the month. Select **All Columns** and save each file to the appropriate monthly folder.
+- **Ledger:** The ledger is a running record. Replace the file in the Automation Files folder with the new version after each run.
+""")
 
 reg_attendee_file = st.file_uploader("Upload Attendee Registration Excel", type=["xlsx"])
 reg_exhibitor_file = st.file_uploader("Upload Exhibitor Registration Excel", type=["xlsx"])
@@ -136,7 +150,6 @@ if st.button("Run Reconciliation"):
         captured_valid = captured_merged[captured_merged["arrival_date_(utc)"].notna()].copy()
         captured_deferred = captured_merged[captured_merged["arrival_date_(utc)"].isna()].copy()
 
-        # ✅ FIXED GROSS: Only use captured_valid (not merged) for reconciliation
         grouped_recon = captured_valid.groupby("transfer").agg({
             "amount_x": "sum"
         }).rename(columns={"amount_x": "Gross Amount"}).reset_index()
@@ -175,7 +188,6 @@ if st.button("Run Reconciliation"):
                 ]]
                 refunds_schedule.to_excel(writer, sheet_name="Refunds Schedule", index=False)
 
-            # === FORMATTING & VALIDATION ===
             workbook = writer.book
             currency_fmt = workbook.add_format({"num_format": "$#,##0.00"})
             bold_fmt = workbook.add_format({"bold": True})
@@ -225,15 +237,30 @@ if st.button("Run Reconciliation"):
                     }
                 )
 
-        st.download_button("Download Reconciliation Report", data=buffer.getvalue(), file_name="Stripe_Reconciliation_Output.xlsx")
-
         updated_ledger = pd.concat([ledger_df, captured_valid[["transfer"]]]).drop_duplicates()
         ledger_buffer = BytesIO()
         updated_ledger.to_csv(ledger_buffer, index=False)
-        st.download_button("Download Updated Ledger", data=ledger_buffer.getvalue(), file_name="processed_transfers_ledger.csv")
+
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zipf:
+            zipf.writestr("Stripe_Reconciliation_Output.xlsx", buffer.getvalue())
+            zipf.writestr("processed_transfers_ledger.csv", ledger_buffer.getvalue())
+        zip_buffer.seek(0)
+
+        st.markdown("""
+✅ Click the button below to download both the Reconciliation Report and updated Ledger.
+The ZIP file contains:
+- Stripe_Reconciliation_Output.xlsx
+- processed_transfers_ledger.csv
+
+Unzip the contents to access your results.
+""")
+
+        st.download_button("📥 Download All Outputs (ZIP)", data=zip_buffer.getvalue(), file_name="SCAAP_Reconciliation_Outputs.zip")
 
     except Exception as e:
         st.error(f"Error: {e}")
+
 
 
 
