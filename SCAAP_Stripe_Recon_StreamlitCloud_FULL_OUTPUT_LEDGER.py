@@ -140,7 +140,26 @@ if st.button("Run Reconciliation"):
         captured_valid = captured_merged[captured_merged["arrival_date_(utc)"].notna()].copy()
         captured_deferred = captured_merged[captured_merged["arrival_date_(utc)"].isna()].copy()
 
-        grouped_recon = captured_valid.groupby("transfer").agg({
+        
+        # --- FIXED Reconciliation Summary ---
+        captured_valid["transfer"] = captured_valid["transfer"].astype(str)
+        merged["transfer"] = merged["transfer"].astype(str)
+        recon_merge = captured_valid.merge(
+            merged[["transfer", "amount", "Revenue Account"]],
+            on="transfer", how="left"
+        )
+        grouped_recon = recon_merge.groupby("transfer").agg({
+            "amount": "sum"
+        }).rename(columns={"amount": "Gross Amount"}).reset_index()
+
+        grouped_recon = grouped_recon.merge(
+            payouts[["id", "amount"]].rename(columns={"id": "transfer", "amount": "Net Deposit"}),
+            on="transfer", how="left"
+        )
+        grouped_recon["Stripe Fees"] = grouped_recon["transfer"].map(fee_lookup)
+        grouped_recon = grouped_recon.rename(columns={"transfer": "Stripe Payout ID"})
+        grouped_recon = grouped_recon[["Stripe Payout ID", "Gross Amount", "Net Deposit", "Stripe Fees"]]
+
             "amount_x": "sum"
         }).rename(columns={"amount_x": "Gross Amount"}).reset_index()
 
@@ -208,6 +227,23 @@ if st.button("Run Reconciliation"):
                 }
             )
 
+            # Apply formatting and totals to currency columns
+            currency_fmt = workbook.add_format({"num_format": "$#,##0.00"})
+            bold_fmt = workbook.add_format({"bold": True})
+
+            def format_sheet(sheet_name, df, money_cols):
+                sheet = writer.sheets[sheet_name]
+                for col in money_cols:
+                    if col in df.columns:
+                        idx = df.columns.get_loc(col)
+                        col_letter = xl_col_to_name(idx)
+                        sheet.set_column(idx, idx, 18, currency_fmt)
+                        sheet.write(f"{col_letter}{len(df)+2}", f"=SUM({col_letter}2:{col_letter}{len(df)+1})", currency_fmt)
+                sheet.write(f"A{len(df)+2}", "TOTALS", bold_fmt)
+
+            format_sheet("Journal Entries", journal_df, ["Debit", "Credit"])
+            format_sheet("Reconciliation Summary", grouped_recon, ["Gross Amount", "Net Deposit", "Stripe Fees"])
+
         
         st.download_button("Download Reconciliation Report", data=buffer.getvalue(), file_name="Stripe_Reconciliation_Output.xlsx")
 
@@ -220,3 +256,4 @@ if st.button("Run Reconciliation"):
 
     except Exception as e:
         st.error(f"Error: {e}")
+
