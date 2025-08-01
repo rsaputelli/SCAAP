@@ -4,6 +4,7 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 import xlsxwriter
+import io
 
 st.set_page_config(page_title="Stripe-TD Reconciliation", layout="wide")
 st.title("Stripe Reconciliation to TD Bank (Streamlit Cloud Version)")
@@ -66,9 +67,15 @@ if st.button("Run Reconciliation"):
         grouped = captured.groupby("transfer").agg({"amount": "sum", "Revenue Account": lambda x: ', '.join(x.unique())}).reset_index()
 
         # Load payouts
-        payouts = pd.read_csv(payouts_csv_file)
+        
+        payouts_data = payouts_csv_file.getvalue()
+        payouts = pd.read_csv(io.BytesIO(payouts_data))
+
         payouts.columns = payouts.columns.str.strip().str.lower().str.replace(" ", "_")
-        payouts = pd.read_csv(payouts_csv_file)
+        
+        payouts_data = payouts_csv_file.getvalue()
+        payouts = pd.read_csv(io.BytesIO(payouts_data))
+
         payouts.columns = payouts.columns.str.strip().str.lower().str.replace(" ", "_")
 
         # Build fee lookup from balance history
