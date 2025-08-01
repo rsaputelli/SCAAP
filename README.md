@@ -1,5 +1,4 @@
-[README (1).md](https://github.com/user-attachments/files/21549509/README.1.md)
-
+[README (1).md](https://g
 # SCAAP Stripe Reconciliation App
 
 This Streamlit app performs reconciliation of Stripe transactions with TD Bank deposits for SCAAP.
@@ -10,12 +9,14 @@ This Streamlit app performs reconciliation of Stripe transactions with TD Bank d
 - Classifies transactions into appropriate revenue accounts
 - Calculates Stripe fees from Balance History file
 - Injects refund transactions into the journal entry
+- Skips transfers already processed (via uploaded ledger)
 - Produces a full Excel output with:
   - ✅ Journal Entries
   - ✅ Unmatched Stripe Transactions
   - ✅ Deferred Entries
   - ✅ Reconciliation Summary
   - ✅ Refunds Schedule (if Balance History is uploaded)
+- Exports a **new ledger** of processed transfers to prevent duplication in future runs
 
 ## How to Use
 
@@ -24,19 +25,21 @@ This Streamlit app performs reconciliation of Stripe transactions with TD Bank d
    - **Exhibitor Registration Excel**
    - **Unified Payments CSV**
    - **Payouts CSV**
-   - *(Optional)* Balance History CSV
-   - *(Optional)* Ledger CSV
+   - **Balance History CSV**
+   - **Processed Transfers Ledger CSV** (required to skip prior entries)
 
 2. Click **"Run Reconciliation"**
 
 3. Review the output journal entry
 
-4. Click **"Download Reconciliation Report"** to download a multi-tab Excel file
+4. Click:
+   - **"Download Reconciliation Report"** to get the full Excel output (multi-tab)
+   - **"Download Updated Ledger"** to get an updated processed_transfers_ledger.csv
 
 ## Deployment Instructions (for Streamlit Cloud)
 
 1. Push the following files to a GitHub repository:
-   - `SCAAP_Stripe_Recon_StreamlitCloud_FULL_OUTPUT.py`
+   - `SCAAP_Stripe_Recon_StreamlitCloud_FULL_OUTPUT_LEDGER.py`
    - `requirements.txt`
    - `README.md`
 
@@ -44,7 +47,7 @@ This Streamlit app performs reconciliation of Stripe transactions with TD Bank d
 
 3. Click **New app** and connect your GitHub repo
 
-4. Select `SCAAP_Stripe_Recon_StreamlitCloud_FULL_OUTPUT.py` as the entry point
+4. Select `SCAAP_Stripe_Recon_StreamlitCloud_FULL_OUTPUT_LEDGER.py` as the entry point
 
 5. Click **Deploy**
 
