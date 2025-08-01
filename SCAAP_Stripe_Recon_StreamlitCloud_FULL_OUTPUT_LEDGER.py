@@ -8,7 +8,6 @@ import io
 st.set_page_config(page_title="Stripe-TD Reconciliation", layout="wide")
 st.title("Stripe Reconciliation to TD Bank (Streamlit Cloud Version)")
 
-# File upload interface
 reg_attendee_file = st.file_uploader("Upload Attendee Registration Excel", type=["xlsx"])
 reg_exhibitor_file = st.file_uploader("Upload Exhibitor Registration Excel", type=["xlsx"])
 unified_csv_file = st.file_uploader("Upload Unified Payments CSV", type=["csv"])
@@ -104,7 +103,6 @@ if st.button("Run Reconciliation"):
 
         journal_df = pd.DataFrame(journal)
 
-        # Refunds to XXXX
         if balance_history_file:
             refund_rows = bh_df[bh_df["Type"].str.lower() == "refund"].copy()
             payout_date_map = payouts.set_index("id")["arrival_date_(utc)"].to_dict()
@@ -138,13 +136,11 @@ if st.button("Run Reconciliation"):
         captured_valid = captured_merged[captured_merged["arrival_date_(utc)"].notna()].copy()
         captured_deferred = captured_merged[captured_merged["arrival_date_(utc)"].isna()].copy()
 
-        recon_merge = captured_valid.merge(
-            merged[["transfer", "amount", "Revenue Account"]],
-            on="transfer", how="left"
-        )
-        grouped_recon = recon_merge.groupby("transfer").agg({
-            "amount": "sum"
-        }).rename(columns={"amount": "Gross Amount"}).reset_index()
+        # ✅ FIXED GROSS: Only use captured_valid (not merged) for reconciliation
+        grouped_recon = captured_valid.groupby("transfer").agg({
+            "amount_x": "sum"
+        }).rename(columns={"amount_x": "Gross Amount"}).reset_index()
+
         grouped_recon = grouped_recon.merge(
             payouts[["id", "amount"]].rename(columns={"id": "transfer", "amount": "Net Deposit"}),
             on="transfer", how="left"
@@ -179,7 +175,7 @@ if st.button("Run Reconciliation"):
                 ]]
                 refunds_schedule.to_excel(writer, sheet_name="Refunds Schedule", index=False)
 
-            # === FORMATTING & TOTALS ===
+            # === FORMATTING & VALIDATION ===
             workbook = writer.book
             currency_fmt = workbook.add_format({"num_format": "$#,##0.00"})
             bold_fmt = workbook.add_format({"bold": True})
@@ -238,5 +234,6 @@ if st.button("Run Reconciliation"):
 
     except Exception as e:
         st.error(f"Error: {e}")
+
 
 
