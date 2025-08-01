@@ -188,7 +188,7 @@ with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
     # === FORMATTING & TOTALS ===
     workbook = writer.book
     currency_fmt = workbook.add_format({"num_format": "$#,##0.00"})
-    bold_fmt = workbook.add_format({"bold": True"})
+    bold_fmt = workbook.add_format({"bold": True})
     from xlsxwriter.utility import xl_col_to_name
 
     def format_sheet(sheet_name, df, money_cols, add_validation=False):
