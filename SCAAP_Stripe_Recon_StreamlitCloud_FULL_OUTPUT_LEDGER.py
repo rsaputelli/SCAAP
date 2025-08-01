@@ -174,6 +174,11 @@ if st.button("Run Reconciliation"):
             "amount": "sum"
         }).rename(columns={"amount": "Gross Amount"}).reset_index()
 
+        grouped_recon = grouped_recon.merge(
+            payouts[["id", "amount"]].rename(columns={"id": "transfer", "amount": "Net Deposit"}),
+            on="transfer", how="left"
+        )
+
         grouped_recon["Stripe Fees"] = grouped_recon["transfer"].map(fee_lookup)
         grouped_recon = grouped_recon.rename(columns={"transfer": "Stripe Payout ID"})
         grouped_recon = grouped_recon[["Stripe Payout ID", "Gross Amount", "Net Deposit", "Stripe Fees"]]
