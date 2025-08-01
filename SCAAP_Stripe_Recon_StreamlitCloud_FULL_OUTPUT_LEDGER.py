@@ -55,6 +55,8 @@ if st.button("Run Reconciliation"):
         # Load payouts
         payouts = pd.read_csv(payouts_csv_file)
         payouts.columns = payouts.columns.str.strip().str.lower().str.replace(" ", "_")
+        payouts = pd.read_csv(payouts_csv_file)
+        payouts.columns = payouts.columns.str.strip().str.lower().str.replace(" ", "_")
 
         # Build fee lookup from balance history
         fee_lookup = {}
